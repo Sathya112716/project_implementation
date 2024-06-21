@@ -1,23 +1,178 @@
 # Databricks notebook source
-read_df =spark.read.format('json').load("dbfs:/FileStore/shared_uploads/sathyapriya.r@diggibyte.com/vtex_test_data-1.json")
-read_df.display()
+from pyspark.sql.types import StructType, StructField, BooleanType, StringType, ArrayType, FloatType, LongType, MapType, IntegerType, DoubleType, TimestampType
 
 # COMMAND ----------
 
-read_df.printSchema()
+cancellationData_schema = StructType([
+    StructField("RequestedByUser", BooleanType(), True),
+    StructField("RequestedBySystem", BooleanType(), True),
+    StructField("RequestedBySellerNotification", BooleanType(), True),
+    StructField("RequestedByPaymentNotification", BooleanType(), True),
+    StructField("Reason", StringType(), True),
+    StructField("CancellationDate", StringType(), True)
+])
+invoice_data_schema = StructType([
+    StructField("userPaymentInfo", StringType(), True),
+    StructField("address", StructType([
+        StructField("postalCode", StringType(), True),
+        StructField("city", StringType(), True),
+        StructField("state", StringType(), True),
+        StructField("country", StringType(), True),
+        StructField("street", StringType(), True),
+        StructField("number", StringType(), True),
+        StructField("neighborhood", StringType(), True),
+        StructField("complement", StringType(), True),
+        StructField("reference", StringType(), True),
+        StructField("geoCoordinates", ArrayType(DoubleType()), True)
+    ]), True),
+    StructField("invoiceSubject", StringType(), True)
+])
+commercialConditionData_schema = StructType([
+    StructField("id", StringType(), True),
+    StructField("parentOrderId", StringType(), True),
+    StructField("reason", StringType(), True)
+])
+garantia_estendida_schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("refId", StringType(), True),
+    StructField("id", StringType(), True),
+    StructField("productId", StringType(), True),
+    StructField("productWeight", IntegerType(), True),
+    StructField("lineID", IntegerType(), True),
+    StructField("model", StringType(), True)
+])
 
-# COMMAND ----------
+takeback_schema = StructType([
+    StructField("nome", StringType(), True),
+    StructField("productName", StringType(), True),
+    StructField("valor", StringType(), True),
+    StructField("material", StringType(), True)
+])
 
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col ,explode,explode_outer
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, FloatType, ArrayType, MapType, TimestampType
+content_schema = StructType([
+    StructField("takeback", StringType(), True),  # JSON string, will be parsed later
+    StructField("garantia-estendida", StringType(), True)  # JSON string, will be parsed later
+])
 
-# COMMAND ----------
+array_schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("content", content_schema, True)
+])
+subscriptionData_schema = StructType([
+    StructField("SubscriptionGroupId", StringType(), True),
+    StructField("Subscriptions", ArrayType(
+        StructType([
+            StructField("ExecutionCount", IntegerType(), True),
+            StructField("PriceAtSubscriptionDate", DoubleType(), True),
+            StructField("ItemIndex", IntegerType(), True),
+            StructField("Plan", StructType([
+                StructField("type", StringType(), True),
+                StructField("frequency", StructType([
+                    StructField("periodicity", StringType(), True),
+                    StructField("interval", IntegerType(), True)
+                ]), True),
+                StructField("validity", StructType([
+                    StructField("begin", StringType(), True),
+                    StructField("end", StringType(), True)
+                ]), True)
+            ]), True)
+        ])
+    ), True)
+])
+item_schema = StructType([
+    StructField("Id", StringType(), True),
+    StructField("Seller", StringType(), True),
+    StructField("Name", StringType(), True),
+    StructField("SkuName", StringType(), True),
+    StructField("ProductId", StringType(), True),
+    StructField("RefId", StringType(), True),
+    StructField("Ean", StringType(), True),
+    StructField("ImageUrl", StringType(), True),
+    StructField("DetailUrl", StringType(), True),
+    StructField("AssemblyOptions", StringType(), True)
+])
 
-spark = SparkSession.builder.appName("OrderDetailsSchema").getOrCreate()
+composition_schema = StructType([
+    StructField("Items", ArrayType(item_schema), True)
+])
+additional_info_schema = StructType([
+    StructField("brandName", StringType(), True),
+    StructField("brandId", StringType(), True),
+    StructField("categoriesIds", StringType(), True),
+    StructField("categories", StringType(), True),
+    StructField("productClusterId", StringType(), True),
+    StructField("commercialConditionId", StringType(), True),
+    StructField("dimension", StructType([
+        StructField("cubicweight", FloatType(), True),
+        StructField("height", FloatType(), True),
+        StructField("length", FloatType(), True),
+        StructField("weight", FloatType(), True),
+        StructField("width", FloatType(), True)
+    ]), True),
+    StructField("offeringInfo", StringType(), True),
+    StructField("offeringType", StringType(), True),
+    StructField("offeringTypeId", StringType(), True)
+])
 
-# Define the schema for the order details
-order_details_schema = StructType([
+price_definition_schema = StructType([
+    StructField("sellingPrices", ArrayType(StructType([
+        StructField("value", LongType(), True),
+        StructField("quantity", IntegerType(), True)
+    ])), True),
+    StructField("calculatedSellingPrice", LongType(), True),
+    StructField("total", LongType(), True),
+    StructField("reason", StringType(), True)
+])
+
+component_schema = StructType([
+    StructField("uniqueId", StringType(), True),
+    StructField("id", StringType(), True),
+    StructField("productId", StringType(), True),
+    StructField("ean", StringType(), True),
+    StructField("lockId", StringType(), True),
+    StructField("itemAttachment", StructType([
+        StructField("content", MapType(StringType(), StringType()), True),
+        StructField("name", StringType(), True)
+    ]), True),
+    StructField("attachments", ArrayType(StringType()), True),
+    StructField("quantity", IntegerType(), True),
+    StructField("seller", StringType(), True),
+    StructField("name", StringType(), True),
+    StructField("refId", StringType(), True),
+    StructField("price", LongType(), True),
+    StructField("listPrice", LongType(), True),
+    StructField("manualPrice", LongType(), True),
+    StructField("priceTags", ArrayType(StringType()), True),
+    StructField("imageUrl", StringType(), True),
+    StructField("detailUrl", StringType(), True),
+    StructField("components", ArrayType(StringType()), True),
+    StructField("bundleItems", ArrayType(StringType()), True),
+    StructField("params", ArrayType(StringType()), True),
+    StructField("offerings", ArrayType(StringType()), True),
+    StructField("attachmentOfferings", ArrayType(StringType()), True),
+    StructField("sellerSku", StringType(), True),
+    StructField("priceValidUntil", StringType(), True),
+    StructField("commission", IntegerType(), True),
+    StructField("tax", IntegerType(), True),
+    StructField("preSaleDate", StringType(), True),
+    StructField("additionalInfo", additional_info_schema, True),
+    StructField("measurementUnit", StringType(), True),
+    StructField("unitMultiplier", FloatType(), True),
+    StructField("sellingPrice", LongType(), True),
+    StructField("isGift", BooleanType(), True),
+    StructField("shippingPrice", LongType(), True),
+    StructField("rewardValue", LongType(), True),
+    StructField("freightCommission", LongType(), True),
+    StructField("priceDefinition", price_definition_schema, True),
+    StructField("taxCode", StringType(), True),
+    StructField("parentItemIndex", StringType(), True),
+    StructField("parentAssemblyBinding", StringType(), True),
+    StructField("callCenterOperator", StringType(), True),
+    StructField("serialNumbers", StringType(), True),
+    StructField("assemblies", ArrayType(StringType()), True),
+    StructField("costPrice", LongType(), True)
+])
+schema = StructType([
     StructField("orderId", StringType(), True),
     StructField("sequence", StringType(), True),
     StructField("marketplaceOrderId", StringType(), True),
@@ -49,19 +204,100 @@ order_details_schema = StructType([
             StructField("content", MapType(StringType(), StringType()), True),
             StructField("name", StringType(), True)
         ]), True),
-        StructField("attachments", ArrayType(StringType()), True),
+        StructField("attachments", ArrayType(array_schema), True),
         StructField("quantity", IntegerType(), True),
         StructField("seller", StringType(), True),
         StructField("name", StringType(), True),
         StructField("refId", StringType(), True),
         StructField("price", IntegerType(), True),
         StructField("listPrice", IntegerType(), True),
-        StructField("manualPrice", IntegerType(), True),
+        StructField("manualPrice", StringType(), True),
+        StructField("priceTags", ArrayType(StringType()), True),
+        StructField("imageUrl", StringType(), True),
+        StructField("detailUrl", StringType(), True),
+        StructField("components", ArrayType(component_schema), True),
+        StructField("bundleItems", ArrayType(StructType([
+        StructField("uniqueId", StringType(), True),
+        StructField("id", StringType(), True),
+        StructField("productId", StringType(), True),
+        StructField("ean", StringType(), True),
+        StructField("lockId", StringType(), True),
+        StructField("itemAttachment", StructType([
+            StructField("content", StructType([]), True),
+            StructField("name", StringType(), True)
+        ]), True),
+        StructField("attachments", ArrayType(StringType()), True),
+        StructField("quantity", IntegerType(), True),
+        StructField("seller", StringType(), True),
+        StructField("name", StringType(), True),
+        StructField("refId", StringType(), True),
+        StructField("price", LongType(), True),
+        StructField("listPrice", LongType(), True),
+        StructField("manualPrice", LongType(), True),
         StructField("priceTags", ArrayType(StringType()), True),
         StructField("imageUrl", StringType(), True),
         StructField("detailUrl", StringType(), True),
         StructField("components", ArrayType(StringType()), True),
         StructField("bundleItems", ArrayType(StringType()), True),
+        StructField("params", ArrayType(StringType()), True),
+        StructField("offerings", ArrayType(StringType()), True),
+        StructField("attachmentOfferings", ArrayType(StructType([
+            StructField("name", StringType(), True),
+            StructField("required", BooleanType(), True),
+            StructField("schema", StructType([
+                StructField("takeback", StructType([
+                    StructField("MaximumNumberOfCharacters", IntegerType(), True),
+                    StructField("Domain", ArrayType(StringType()), True)
+                ]), True)
+            ]), True)
+        ])), True),
+        StructField("sellerSku", StringType(), True),
+        StructField("priceValidUntil", StringType(), True),
+        StructField("commission", LongType(), True),
+        StructField("tax", LongType(), True),
+        StructField("preSaleDate", StringType(), True),
+        StructField("additionalInfo", StructType([
+            StructField("brandName", StringType(), True),
+            StructField("brandId", StringType(), True),
+            StructField("categoriesIds", StringType(), True),
+            StructField("categories", StringType(), True),
+            StructField("productClusterId", StringType(), True),
+            StructField("commercialConditionId", StringType(), True),
+            StructField("dimension", StructType([
+                StructField("cubicweight", DoubleType(), True),
+                StructField("height", DoubleType(), True),
+                StructField("length", DoubleType(), True),
+                StructField("weight", DoubleType(), True),
+                StructField("width", DoubleType(), True)
+            ]), True),
+            StructField("offeringInfo", StringType(), True),
+            StructField("offeringType", StringType(), True),
+            StructField("offeringTypeId", StringType(), True)
+        ]), True),
+        StructField("measurementUnit", StringType(), True),
+        StructField("unitMultiplier", DoubleType(), True),
+        StructField("sellingPrice", LongType(), True),
+        StructField("isGift", BooleanType(), True),
+        StructField("shippingPrice", LongType(), True),
+        StructField("rewardValue", LongType(), True),
+        StructField("freightCommission", LongType(), True),
+        StructField("priceDefinition", StructType([
+            StructField("sellingPrices", ArrayType(StructType([
+                StructField("value", LongType(), True),
+                StructField("quantity", IntegerType(), True)
+            ])), True),
+            StructField("calculatedSellingPrice", LongType(), True),
+            StructField("total", LongType(), True),
+            StructField("reason", StringType(), True)
+        ]), True),
+        StructField("taxCode", StringType(), True),
+        StructField("parentItemIndex", StringType(), True),
+        StructField("parentAssemblyBinding", StringType(), True),
+        StructField("callCenterOperator", StringType(), True),
+        StructField("serialNumbers", StringType(), True),
+        StructField("assemblies", ArrayType(StringType()), True),
+        StructField("costPrice", LongType(), True)
+    ])), True),
         StructField("params", ArrayType(StringType()), True),
         StructField("offerings", ArrayType(StructType([
             StructField("type", StringType(), True),
@@ -107,7 +343,7 @@ order_details_schema = StructType([
         StructField("unitMultiplier", FloatType(), True),
         StructField("sellingPrice", IntegerType(), True),
         StructField("isGift", BooleanType(), True),
-        StructField("shippingPrice", IntegerType(), True),
+        StructField("shippingPrice", StringType(), True),
         StructField("rewardValue", IntegerType(), True),
         StructField("freightCommission", IntegerType(), True),
         StructField("priceDefinition", StructType([
@@ -120,7 +356,7 @@ order_details_schema = StructType([
             StructField("reason", StringType(), True)
         ]), True),
         StructField("taxCode", StringType(), True),
-        StructField("parentItemIndex", IntegerType(), True),
+        StructField("parentItemIndex", StringType(), True),
         StructField("parentAssemblyBinding", StringType(), True),
         StructField("callCenterOperator", StringType(), True),
         StructField("serialNumbers", StringType(), True),
@@ -161,11 +397,18 @@ order_details_schema = StructType([
     ]), True),
     StructField("ratesAndBenefitsData", StructType([
         StructField("id", StringType(), True),
-        StructField("rateAndBenefitsIdentifiers", ArrayType(StringType()), True)
+        StructField("rateAndBenefitsIdentifiers", ArrayType(StructType([
+    StructField("description", StringType(), True),
+    StructField("featured", BooleanType(), True),
+    StructField("id", StringType(), True),
+    StructField("name", StringType(), True),
+    StructField("matchedParameters", MapType(StringType(), StringType()), True),
+    StructField("additionalInfo", StringType(), True)
+])), True)
     ]), True),
     StructField("shippingData", StructType([
         StructField("id", StringType(), True),
-        StructField("address",StructType([
+        StructField("address", StructType([
             StructField("addressType", StringType(), True),
             StructField("receiverName", StringType(), True),
             StructField("addressId", StringType(), True),
@@ -189,10 +432,16 @@ order_details_schema = StructType([
             StructField("price", IntegerType(), True),
             StructField("listPrice", IntegerType(), True),
             StructField("sellingPrice", IntegerType(), True),
-            StructField("deliveryWindow", StringType(), True),
-            StructField("deliveryCompany", StringType(), True),
+            StructField("deliveryWindow", StructType([
+            StructField("startDateUtc", StringType(), True),
+            StructField("endDateUtc", StringType(), True),
+            StructField("price", IntegerType(), True)
+            ]), True),
+            StructField("deliveryCompany", StringType
+
+(), True),
             StructField("shippingEstimate", StringType(), True),
-            StructField("shippingEstimateDate", TimestampType(), True),
+            StructField("shippingEstimateDate", StringType(), True),
             StructField("slas", ArrayType(StructType([
                 StructField("id", StringType(), True),
                 StructField("name", StringType(), True),
@@ -237,7 +486,10 @@ order_details_schema = StructType([
                 StructField("quantity", IntegerType(), True),
                 StructField("warehouseId", StringType(), True),
                 StructField("accountCarrierName", StringType(), True),
-                StructField("kitItemDetails", ArrayType(StringType()), True)
+                StructField("kitItemDetails", ArrayType(StructType([
+                StructField("ItemId", StringType(), True),
+                StructField("WarehouseId", StringType(), True)
+                ])), True)
             ])), True),
             StructField("deliveryChannels", ArrayType(StructType([
                 StructField("id", StringType(), True),
@@ -278,7 +530,18 @@ order_details_schema = StructType([
         ])), True)
     ]), True),
     StructField("paymentData", StructType([
-        StructField("giftCards", ArrayType(StringType()), True),
+        StructField("giftCards", ArrayType(StructType([
+    StructField("id", StringType(), True),
+    StructField("redemptionCode", StringType(), True),
+    StructField("name", StringType(), True),
+    StructField("caption", StringType(), True),
+    StructField("value", IntegerType(), True),
+    StructField("balance", IntegerType(), True),
+    StructField("provider", StringType(), True),
+    StructField("groupName", StringType(), True),
+    StructField("inUse", BooleanType(), True),
+    StructField("isSpecialCard", BooleanType(), True)
+])), True),
         StructField("transactions", ArrayType(StructType([
             StructField("isActive", BooleanType(), True),
             StructField("transactionId", StringType(), True),
@@ -315,7 +578,18 @@ order_details_schema = StructType([
                 StructField("bankIssuedInvoiceIdentificationNumberFormatted", StringType(), True),
                 StructField("bankIssuedInvoiceBarCodeNumber", StringType(), True),
                 StructField("bankIssuedInvoiceBarCodeType", StringType(), True),
-                StructField("billingAddress", StringType(), True),
+                StructField("billingAddress", StructType([
+    StructField("postalCode", StringType(), True),
+    StructField("city", StringType(), True),
+    StructField("state", StringType(), True),
+    StructField("country", StringType(), True),
+    StructField("street", StringType(), True),
+    StructField("number", StringType(), True),
+    StructField("neighborhood", StringType(), True),
+    StructField("complement", StringType(), True),
+    StructField("reference", StringType(), True),
+    StructField("geoCoordinates", ArrayType(DoubleType()), True)
+]), True),
                 StructField("paymentOrigin", StringType(), True)
             ])), True)
         ])), True)
@@ -333,12 +607,14 @@ order_details_schema = StructType([
     StructField("followUpEmail", StringType(), True),
     StructField("lastMessage", StringType(), True),
     StructField("hostname", StringType(), True),
-    StructField("invoiceData", StringType(), True),
+    StructField("invoiceData", invoice_data_schema, True),
     StructField("changesAttachment", StringType(), True),
-    StructField("openTextField", StringType(), True),
+    StructField("openTextField", StructType([
+    StructField("value", StringType(), True)
+]), True),
     StructField("roundingError", IntegerType(), True),
     StructField("orderFormId", StringType(), True),
-    StructField("commercialConditionData", StringType(), True),
+    StructField("commercialConditionData", commercialConditionData_schema, True),
     StructField("isCompleted", BooleanType(), True),
     StructField("customData", StringType(), True),
     StructField("storePreferencesData", StructType([
@@ -360,11 +636,11 @@ order_details_schema = StructType([
     StructField("isCheckedIn", BooleanType(), True),
     StructField("marketplace", StructType([
         StructField("baseURL", StringType(), True),
-        StructField("isCertified", BooleanType(), True),
+        StructField("isCertified", StringType(), True),
         StructField("name", StringType(), True)
     ]), True),
     StructField("authorizedDate", TimestampType(), True),
-    StructField("invoicedDate", TimestampType(), True),
+    StructField("invoicedDate", StringType(), True),
     StructField("cancelReason", StringType(), True),
     StructField("itemMetadata", StructType([
         StructField("Items", ArrayType(StructType([
@@ -381,256 +657,40 @@ order_details_schema = StructType([
                 StructField("Id", StringType(), True),
                 StructField("Name", StringType(), True),
                 StructField("Required", BooleanType(), True),
-                StructField("InputValues", MapType(StringType(), StructType([
-                    StructField("MaximumNumberOfCharacters", IntegerType(), True),
-                    StructField("Domain", ArrayType(StringType()), True)
-                ])), True),
-                StructField("Composition", StringType(), True)
+                StructField("InputValues", StructType([
+                    StructField("takeback", StructType([
+                        StructField("MaximumNumberOfCharacters", IntegerType(), True),
+                        StructField("Domain", ArrayType(StringType()), True)
+                    ]), True),
+                    StructField("garantia-estendida", StructType([
+                        StructField("MaximumNumberOfCharacters", IntegerType(), True),
+                        StructField("Domain", ArrayType(StringType()), True)
+                    ]), True)
+                ]), True),
+                StructField("Composition", composition_schema, True)
             ])), True)
         ])), True)
     ]), True),
-    StructField("subscriptionData", StringType(), True),
+    StructField("subscriptionData", subscriptionData_schema, True),
     StructField("taxData", StringType(), True),
     StructField("checkedInPickupPointId", StringType(), True),
-    StructField("cancellationData", StringType(), True),
+    StructField("cancellationData", cancellationData_schema, True),
     StructField("clientPreferencesData", StructType([
         StructField("locale", StringType(), True),
         StructField("optinNewsLetter", BooleanType(), True)
     ]), True)
 ])
-
-
-# COMMAND ----------
-
-df_parsed = read_df.withColumn("orderDetails", from_json(col("orderDetails"), order_details_schema)) 
-
-# COMMAND ----------
-
-df_parsed.display()
-
-# COMMAND ----------
-
-df_final = df_parsed.select("orderDetails.*")
-
+discount_schema = StructType([
+    StructField("priceTag_name", StringType(), True),
+    StructField("priceTag_value", FloatType(), True),
+    StructField("priceTag_isPercentual", BooleanType(), True),
+    StructField("priceTag_identifier", StringType(), True),
+    StructField("priceTag_rawValue", FloatType(), True),
+    StructField("priceTag_rate", FloatType(), True),
+    StructField("priceTag_jurisCode", StringType(), True),
+    StructField("priceTag_jurisType", StringType(), True),
+    StructField("priceTag_jurisName", StringType(), True)
+])
 
 # COMMAND ----------
-
-df_parsed.printSchema()
-
-# COMMAND ----------
-
-
-totals_df_final=df_final.withColumn("totals",explode(df_final["totals"])).select("orderId","totals.*")
-items_df=df_final.withColumn("items",explode(df_final["items"])).select("orderId","sequence","sellerorderId","clientProfileData.email","items.*")
-marketplaceItems_df_final=df_final.withColumn("marketplaceItems",explode(df_final["marketplaceItems"])).select("orderId","marketplaceItems")
-clientProfileData_df_final=df_final.select("orderId","clientProfileData.*")
-marketingData_df =df_final.select("orderId","marketingData.*")
-ratesAndBenefitsData_df = df_final.select("orderId","ratesAndBenefitsData.*")
-shippingData_df = df_final.select("orderId","sequence","shippingData.*")
-paymentData_df = df_final.select("orderId","sequence","paymentData.*")
-packageAttachment_df = df_final.select("orderId","packageAttachment.*")
-sellers_df_final = df_final.withColumn("sellers",explode(df_final["sellers"])).select("orderId","sellers.*")
-storePreferencesData_df =df_final.select("orderId","storePreferencesData.*")
-marketplace_df_final = df_final.select("orderId","marketplace.*")
-itemMetadata_df =df_final.select("orderId","sequence","itemMetadata.*")
-clientPreferencesData_df_final =df_final.select("orderId","clientPreferencesData.*")
-
-
-
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Item Table
-items_df1=items_df.withColumn("attachments",explode_outer("attachments"))\
-                  .withColumn("priceTags", explode_outer("priceTags")) \
-                  .withColumn("components", explode_outer("components")) \
-                  .withColumn("bundleItems", explode_outer("bundleItems")) \
-                  .withColumn("params", explode_outer("params")) \
-                  .withColumn("offerings", explode_outer("offerings")) \
-                  .withColumn("attachmentOfferings", explode_outer("attachmentOfferings")) \
-                  .withColumn("assemblies", explode_outer("assemblies"))
-items_df2=items_df1.select("*",
-    "itemAttachment.*",
-    "offerings.*",
-    "attachmentOfferings.*",
-    "additionalInfo.*",
-    "priceDefinition.*","attachments").drop("itemAttachment","offerings","attachmentOfferings","additionalInfo","priceDefinition")
-
-items_df3=items_df2.select("*", explode_outer("content").alias("content_key", "content_value")).select("*", explode_outer("schema").alias("schema_key", "schema_value")).drop("content","schema")
-
-items_df4=items_df3.withColumn("categories",explode_outer("categories"))\
-                   .withColumn("sellingPrices",explode_outer("sellingPrices"))
-
-items_final=items_df4.select("*","categories.*","dimension.*","sellingPrices.*","schema_value").drop("categories","dimension","sellingPrices","schema_value")
-
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Rates and Benefits Table
-ratesAndBenefitsData_df_final=ratesAndBenefitsData_df.withColumn("rateAndBenefitsIdentifiers",explode_outer("rateAndBenefitsIdentifiers"))
-
-# COMMAND ----------
-
-# DBTITLE 1,Shipping Data Table
-shippingData_df1=shippingData_df.withColumn('logisticsInfo', explode_outer('logisticsInfo')) \
-                                .withColumn("selectedAddresses",explode_outer("selectedAddresses"))
-                                
-shippingData_df2=shippingData_df1.select("*","logisticsInfo.*","address.*","selectedAddresses.*").drop("logisticsInfo","selectedAddresses","address")
-shippingData_df3=shippingData_df2.withColumn("slas",explode_outer("slas"))\
-                                 .withColumn("shipsTo",explode_outer("shipsTo"))\
-                                 .withColumn("deliveryIds",explode_outer("deliveryIds"))\
-                                 .withColumn("deliveryChannels",explode_outer("deliveryChannels"))
-shippingData_df4=shippingData_df3.select("*","slas.*","deliveryIds.*","deliveryChannels.*","pickupStoreInfo.*").drop("slas","deliveryIds","deliveryChannels","pickupStoreInfo")
-shippingData_df_final=shippingData_df4.withColumn("kitItemDetails",explode_outer("kitItemDetails"))
-
-# COMMAND ----------
-
-# DBTITLE 1,Payment Data Table
-paymentData_df1=paymentData_df.withColumn("giftCards",explode_outer("giftCards"))\
-                              .withColumn("transactions",explode_outer("transactions"))
-paymentData_df2=paymentData_df1.select("*","transactions.*").drop("transactions")
-paymentData_df3=paymentData_df2.withColumn("payments",explode_outer("payments"))
-paymentData_df4=paymentData_df3.select("*","payments.*").drop("payments")
-paymentData_df_final=paymentData_df4.select("*",explode_outer("connectorResponses").alias("connector_key","connector_value")).drop("connectorResponses")
-
-# COMMAND ----------
-
-# DBTITLE 1,Package Attachment Table
-packageAttachment_df_final=packageAttachment_df.withColumn("packages",explode_outer("packages"))
-
-# COMMAND ----------
-
-# DBTITLE 1,Item Metadata Table
-itemMetadata_df1=itemMetadata_df.withColumn("items",explode_outer("items"))
-itemMetadata_df2=itemMetadata_df1.select("*","items.*").drop("items")
-itemMetadata_df3=itemMetadata_df2.withColumn("AssemblyOptions",explode_outer("AssemblyOptions"))
-itemMetadata_df4=itemMetadata_df3.select("*","AssemblyOptions.*").drop("AssemblyOptions")
-itemMetadata_df5=itemMetadata_df4.select("*",explode_outer("InputValues").alias("input_key","input_value")).drop("InputValues")
-itemMetadata_df6=itemMetadata_df5.select("*","input_value.*").drop("input_value")
-itemMetadata_df_final=itemMetadata_df6.withColumn("domain",explode_outer("domain"))
-
-# COMMAND ----------
-
-# DBTITLE 1,final tables
-totals_df_final=df_final.withColumn("totals",explode(df_final["totals"])).select("orderId","totals.*")
-totals_df_final.display()
-items_final=items_df4.select("*","categories.*","dimension.*","sellingPrices.*","schema_value").drop("categories","dimension","sellingPrices","schema_value")
-items_final.display()
-marketplaceItems_df_final=df_final.withColumn("marketplaceItems",explode(df_final["marketplaceItems"])).select("orderId","marketplaceItems")
-marketplaceItems_df_final.display()
-clientProfileData_df_final=df_final.select("orderId","clientProfileData.*")
-clientProfileData_df_final.display()
-marketingData_df_final=marketingData_df.withColumn("marketingTags",explode_outer("marketingTags"))
-marketingData_df_final.display()
-ratesAndBenefitsData_df_final=ratesAndBenefitsData_df.withColumn("rateAndBenefitsIdentifiers",explode_outer("rateAndBenefitsIdentifiers"))
-ratesAndBenefitsData_df_final.display()
-shippingData_df_final=shippingData_df4.withColumn("kitItemDetails",explode_outer("kitItemDetails"))
-shippingData_df_final.display()
-paymentData_df_final=paymentData_df4.select("*",explode_outer("connectorResponses").alias("connector_key","connector_value")).drop("connectorResponses")
-paymentData_df_final.display()
-packageAttachment_df_final=packageAttachment_df.withColumn("packages",explode_outer("packages")) 
-packageAttachment_df_final.display()
-sellers_df_final = df_final.withColumn("sellers",explode(df_final["sellers"])).select("orderId","sellers.*")
-sellers_df_final.display()
-storePreferencesData_df_final=storePreferencesData_df.select("*","currencyFormatInfo.*").drop("currencyFormatInfo")
-storePreferencesData_df_final.display()
-marketplace_df_final = df_final.select("orderId","marketplace.*")
-marketplace_df_final.display()
-itemMetadata_df_final=itemMetadata_df6.withColumn("domain",explode_outer("domain"))
-itemMetadata_df_final.display()
-clientPreferencesData_df_final =df_final.select("orderId","clientPreferencesData.*")
-clientPreferencesData_df_final.display()
-
-
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Primary Key
-df_count=df_final.groupBy("orderId").count ()
-df_count.display()
-
-# COMMAND ----------
-
-total_primary=totals_df_final.groupBy("orderId","id").count().display()
-
-
-# COMMAND ----------
-
-items_final.display()
-
-# COMMAND ----------
-
-items_primary=items_final.groupBy("orderId","uniqueId","email").count().display()
-
-
-# COMMAND ----------
-
-marketplaceItems_primary=marketplaceItems_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-client_primary=clientProfileData_df_final.groupBy("orderId","email").count().display()
-
-# COMMAND ----------
-
-marketing_primary=marketingData_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-marketing_primary=marketingData_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-ratesAndBenefitsData_primary=ratesAndBenefitsData_df_final.groupBy("orderId","id").count().display()
-
-# COMMAND ----------
-
-shippingData_primary=shippingData_df_final.groupBy("orderId","sequence","isPickupStore").count().display()
-
-# COMMAND ----------
-
-paymentData_primary=paymentData_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-packageAttachment_primary=packageAttachment_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-sellers_primary=sellers_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-storePreferencesData_primary=storePreferencesData_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-marketplace_primary=marketplace_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-itemMetadata_primary=itemMetadata_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-clientPreferencesData_primary=clientPreferencesData_df_final.groupBy("orderId").count().display()
-
-# COMMAND ----------
-
-df_count=df_final.groupBy("sequence").count()
-df_count.display()
-
-# COMMAND ----------
-
-df_count=.groupBy("sequence").count()
-df_count.display()
-
-# COMMAND ----------
-
 
