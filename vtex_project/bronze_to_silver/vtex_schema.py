@@ -1,4 +1,4 @@
-# Databricks notebook source
+# Databricks notebook source file
 from pyspark.sql.types import StructType, StructField, BooleanType, StringType, ArrayType, FloatType, LongType, MapType, IntegerType, DoubleType, TimestampType
 
 # COMMAND ----------
