@@ -1,4 +1,4 @@
-# Databricks notebook source
+# Databricks notebook source file
 # MAGIC %run ./vtex_schema
 
 # COMMAND ----------
