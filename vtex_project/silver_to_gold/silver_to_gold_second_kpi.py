@@ -1,4 +1,4 @@
-# Databricks notebook source
+# Databricks notebook source file
 df_item1= spark.read.format("delta").table('azure_notebook.vtex_db.items')
 
 # COMMAND ----------
